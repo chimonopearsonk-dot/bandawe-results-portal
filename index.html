@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Bandawe School Results Portal</title> 
 
     <link rel="stylesheet" 
@@ -463,6 +464,70 @@
   opacity: 1;
   background: #e8f0fe;
   border-color: #ffb347;
+        }
+        /* ================= MOBILE RESPONSIVENESS ================= */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+        max-width: 100%;
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+    }
+    
+    .dashboard-card {
+        padding: 20px 12px;
+    }
+    
+    .dashboard-card i {
+        font-size: 36px;
+    }
+    
+    .admin-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+    }
+    
+    .admin-card {
+        padding: 18px 10px;
+    }
+    
+    h2 {
+        font-size: 1.4rem;
+    }
+    
+    input, select, button {
+        font-size: 15px;
+        padding: 10px;
+    }
+    
+    #reportCard {
+        padding: 15px;
+        font-size: 11px;
+    }
+}
+
+/* Extra small phones */
+@media (max-width: 480px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .hero {
+        min-height: 220px;
+        padding: 20px 10px;
+    }
+    
+    .hero h1 {
+        font-size: 22px;
+    }
+    
+    .hero h2 {
+        font-size: 16px;
+    }
         }
     </style>
 </head>
