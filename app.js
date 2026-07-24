@@ -984,8 +984,8 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
                     if (!classData[clsName]) classData[clsName] = [];
                     
                     const scores = d.scores || {};
-                    const subjectsSatCount = Object.keys(scores).length || 6; // actual subjects sat
-                    const maxMarks = subjectsSatCount * 100;
+                    const subjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length; 
+                    const maxMarks = (satSubjectsCount || 1) * 100;
 
                     classData[clsName].push({ 
                         name: docSnap.id.split('_')[0], 
@@ -1223,8 +1223,8 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 const scores = data.scores || {};
                 
                 // Calculate max marks based strictly on subjects actually sat
-                const subjectsSatCount = Object.keys(scores).length || 6;
-                const maxPossible = subjectsSatCount * 100;
+                const satSubjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length;
+                const maxPossible = (satSubjectsCount || 1) * 100;
                 const totalScore = data.total || 0;
                 const passStatus = (totalScore / maxPossible) >= 0.4 ? "PASSED" : "FAILED";
 
