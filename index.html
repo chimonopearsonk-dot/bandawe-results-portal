@@ -2472,6 +2472,148 @@ window.viewStudentHistory = async function(studentName) {
     }
 };
 
+window.exportAllClassesResults = async function(selectedTerm = "Term 3", selectedYear = "2026") {
+    try {
+        // Fetch all results and students
+        const resultsSnap = await getDocs(collection(db, "results"));
+        const studentsSnap = await getDocs(collection(db, "students"));
+
+        // Map student metadata (Gender, DOB, etc.)
+        const studentMetaMap = {};
+        studentsSnap.forEach(docSnap => {
+            studentMetaMap[docSnap.id] = docSnap.data();
+        });
+
+        // Group results by Class
+        const classResultsMap = {};
+        classes.forEach(c => classResultsMap[c] = []);
+
+        resultsSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.term === selectedTerm && String(data.year) === String(selectedYear)) {
+                const studentName = docSnap.id.split('_')[0];
+                const meta = studentMetaMap[studentName] || {};
+                const className = data.class || meta.class;
+
+                if (classResultsMap[className]) {
+                    classResultsMap[className].push({
+                        name: studentName,
+                        gender: meta.gender || "Unknown",
+                        scores: data.scores || {},
+                        classSize: data.classSize || 40
+                    });
+                }
+            }
+        });
+
+        const workbook = XLSX.utils.book_new();
+
+        classes.forEach(className => {
+            const list = classResultsMap[className];
+
+            // 1. Calculate totals & dynamically set pass/fail criteria per student
+            list.forEach(student => {
+                let totalScore = 0;
+                let satCount = 0;
+
+                subjects.forEach(sub => {
+                    const sc = Number(student.scores[sub]) || 0;
+                    if (sc > 0) {
+                        totalScore += sc;
+                        satCount++;
+                    }
+                });
+
+                student.satCount = satCount;
+                student.totalScore = totalScore;
+                student.maxPossible = satCount * 100;
+                
+                // Calculate percentage based on sat subjects
+                const percentage = student.maxPossible > 0 ? (totalScore / student.maxPossible) * 100 : 0;
+                student.status = percentage >= 40 ? "PASS" : "FAIL";
+            });
+
+            // 2. Rank students by total marks obtained
+            list.sort((a, b) => b.totalScore - a.totalScore);
+
+            // 3. Prepare Sheet Headers & Data Rows
+            const headers = ["Pos", "Learner Name", "Gender", ...subjects, "Total Marks Obtained", "Status"];
+            const sheetRows = [headers];
+
+            let boysSat = 0, girlsSat = 0;
+            let boysPassed = 0, girlsPassed = 0;
+            let boysFailed = 0, girlsFailed = 0;
+
+            list.forEach((student, idx) => {
+                const isMale = student.gender.toLowerCase() === "male";
+                const isFemale = student.gender.toLowerCase() === "female";
+
+                if (isMale) {
+                    boysSat++;
+                    if (student.status === "PASS") boysPassed++;
+                    else boysFailed++;
+                } else if (isFemale) {
+                    girlsSat++;
+                    if (student.status === "PASS") girlsPassed++;
+                    else girlsFailed++;
+                }
+
+                const subScores = subjects.map(sub => student.scores[sub] !== undefined ? student.scores[sub] : "-");
+                const row = [
+                    idx + 1,
+                    student.name,
+                    student.gender,
+                    ...subScores,
+                    `${student.totalScore} / ${student.maxPossible}`,
+                    student.status
+                ];
+                sheetRows.push(row);
+            });
+
+            // Add blank spacing row before summary table
+            sheetRows.push([]);
+            sheetRows.push(["--- CLASS PERFORMANCE SUMMARY ---"]);
+
+            // 4. Compact Summary Table Rows
+            const totalSat = boysSat + girlsSat;
+            const totalPassed = boysPassed + girlsPassed;
+            const totalFailed = boysFailed + girlsFailed;
+            const overallPassRate = totalSat > 0 ? ((totalPassed / totalSat) * 100).toFixed(1) + "%" : "0%";
+
+            sheetRows.push(["Category", "Boys", "Girls", "Total"]);
+            sheetRows.push(["Learners Sat", boysSat, girlsSat, totalSat]);
+            sheetRows.push(["Learners Passed", boysPassed, girlsPassed, totalPassed]);
+            sheetRows.push(["Learners Failed", boysFailed, girlsFailed, totalFailed]);
+            sheetRows.push(["Pass Rate", boysSat > 0 ? ((boysPassed / boysSat) * 100).toFixed(1) + "%" : "0%", 
+                                        girlsSat > 0 ? ((girlsPassed / girlsSat) * 100).toFixed(1) + "%" : "0%", 
+                                        overallPassRate]);
+
+            const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+
+            // 5. Compact formatting: Set tight column widths matching text sizes
+            const colWidths = [
+                { wch: 5 },   // Pos
+                { wch: 20 },  // Name
+                { wch: 8 },   // Gender
+                ...subjects.map(() => ({ wch: 6 })), // Compact subject scores
+                { wch: 18 },  // Total Marks
+                { wch: 8 }    // Status
+            ];
+            worksheet['!cols'] = colWidths;
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, className);
+        });
+
+        // 6. Download the generated workbook file
+        XLSX.writeFile(workbook, `Bandawe_All_Classes_${selectedTerm}_${selectedYear}.xlsx`);
+        alert("Export successful!");
+
+    } catch (error) {
+        console.error("Export Error:", error);
+        alert("Export failed: " + error.message);
+    }
+};
+
 window.backToDashboardFromHistory = function() {
     // Remove history page
     const historyPage = document.getElementById("adminHistoryPage");
