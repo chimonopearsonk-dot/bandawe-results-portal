@@ -1092,10 +1092,9 @@ window.triggerClassExport = function() {
     const selectedYear = document.getElementById("dashYear")?.value || "2026";
 
     if (typeof window.exportAllClassesResults === "function") {
-        // Pass class filter to export function
         window.exportAllClassesResults(selectedTerm, selectedYear, selectedClass);
     } else {
-        alert("Export function loading...");
+        alert("Export function is loading...");
     }
 };
 
@@ -1197,148 +1196,168 @@ window.viewStudentHistory = async function(studentName) {
         historyPage.innerHTML = `<div style="max-width:900px;margin:20px auto;padding:20px;"><p style="color:red;">Error: ${e.message}</p><button onclick="backToDashboardFromHistory()" style="margin-top:15px;padding:10px 20px;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">Back</button></div>`;
     }
 };
-
-window.exportAllClassesResults = async function(selectedTerm = "Term 3", selectedYear = "2026") {
+window.exportAllClassesResults = async function(selectedTerm = "Term 3", selectedYear = "2026", selectedClass = "ALL") {
     try {
-        // Fetch all results and students
-        const resultsSnap = await getDocs(collection(db, "results"));
-        const studentsSnap = await getDocs(collection(db, "students"));
-
-        // Map student metadata (Gender, DOB, etc.)
-        const studentMetaMap = {};
-        studentsSnap.forEach(docSnap => {
-            studentMetaMap[docSnap.id] = docSnap.data();
+        const snapshot = await getDocs(collection(db, "results"));
+        const studentsSnapshot = await getDocs(collection(db, "students"));
+        
+        // Map student genders from student database
+        let studentGenderMap = {};
+        studentsSnapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.name) studentGenderMap[data.name.trim().toLowerCase()] = data.gender || "Unknown";
         });
 
-        // Group results by Class
-        const classResultsMap = {};
-        classes.forEach(c => classResultsMap[c] = []);
-
-        resultsSnap.forEach(docSnap => {
+        // Group results by class
+        let classGrouped = {};
+        snapshot.forEach(docSnap => {
             const data = docSnap.data();
-            if (data.term === selectedTerm && String(data.year) === String(selectedYear)) {
-                const studentName = docSnap.id.split('_')[0];
-                const meta = studentMetaMap[studentName] || {};
-                const className = data.class || meta.class;
+            const matchesTermYear = (data.term === selectedTerm && data.year == selectedYear);
+            const matchesClass = (selectedClass === "ALL" || data.class === selectedClass);
 
-                if (classResultsMap[className]) {
-                    classResultsMap[className].push({
-                        name: studentName,
-                        gender: meta.gender || "Unknown",
-                        scores: data.scores || {},
-                        classSize: data.classSize || 40
-                    });
-                }
+            if (matchesTermYear && matchesClass) {
+                const className = data.class || "Unknown Class";
+                if (!classGrouped[className]) classGrouped[className] = [];
+
+                const studentName = docSnap.id.split('_')[0].trim();
+                const gender = studentGenderMap[studentName.toLowerCase()] || data.gender || "Unknown";
+                const totalScore = data.total || 0;
+                const maxPossible = (subjects.length || 6) * 100;
+                const passStatus = (totalScore / maxPossible) >= 0.4 ? "PASS" : "FAIL";
+
+                classGrouped[className].push({
+                    name: studentName,
+                    gender: gender,
+                    scores: data.scores || {},
+                    totalScore: totalScore,
+                    maxPossible: maxPossible,
+                    status: passStatus
+                });
             }
         });
 
+        if (Object.keys(classGrouped).length === 0) {
+            alert(`No results found for ${selectedClass === "ALL" ? "any class" : selectedClass} in ${selectedTerm} ${selectedYear}.`);
+            return;
+        }
+
         const workbook = XLSX.utils.book_new();
 
-        classes.forEach(className => {
-            const list = classResultsMap[className];
-
-            // 1. Calculate totals & dynamically set pass/fail criteria per student
-            list.forEach(student => {
-                let totalScore = 0;
-                let satCount = 0;
-
-                subjects.forEach(sub => {
-                    const sc = Number(student.scores[sub]) || 0;
-                    if (sc > 0) {
-                        totalScore += sc;
-                        satCount++;
-                    }
-                });
-
-                student.satCount = satCount;
-                student.totalScore = totalScore;
-                student.maxPossible = satCount * 100;
-                
-                // Calculate percentage based on sat subjects
-                const percentage = student.maxPossible > 0 ? (totalScore / student.maxPossible) * 100 : 0;
-                student.status = percentage >= 40 ? "PASS" : "FAIL";
-            });
-
-            // 2. Rank students by total marks obtained
+        // Process each class into its own sheet
+        Object.keys(classGrouped).sort().forEach(className => {
+            const list = classGrouped[className];
+            // Sort students by total score descending
             list.sort((a, b) => b.totalScore - a.totalScore);
 
-            // 3. Prepare Sheet Headers & Data Rows
-            const headers = ["Pos", "Learner Name", "Gender", ...subjects, "Total Marks Obtained", "Status"];
-            const sheetRows = [headers];
+            let sheetRows = [];
 
+            // 1. Title & Header
+            sheetRows.push([`BANDAWE MODEL PRIMARY SCHOOL - ${className.toUpperCase()} RESULTS`]);
+            sheetRows.push([`Term: ${selectedTerm} | Year: ${selectedYear}`]);
+            sheetRows.push([]); // Blank row
+
+            // 2. Table Headers
+            const subjectHeaders = subjects.map(s => s.toUpperCase());
+            sheetRows.push(["POS", "STUDENT NAME", "GENDER", ...subjectHeaders, "TOTAL MARKS", "STATUS"]);
+
+            // 3. Populate Student Data Rows & Count Gender Stats
             let boysSat = 0, girlsSat = 0;
             let boysPassed = 0, girlsPassed = 0;
             let boysFailed = 0, girlsFailed = 0;
 
             list.forEach((student, idx) => {
-                const isMale = student.gender.toLowerCase() === "male";
-                const isFemale = student.gender.toLowerCase() === "female";
-
-                if (isMale) {
+                const g = student.gender.toLowerCase();
+                if (g === "male") {
                     boysSat++;
                     if (student.status === "PASS") boysPassed++;
                     else boysFailed++;
-                } else if (isFemale) {
+                } else if (g === "female") {
                     girlsSat++;
                     if (student.status === "PASS") girlsPassed++;
                     else girlsFailed++;
                 }
 
                 const subScores = subjects.map(sub => student.scores[sub] !== undefined ? student.scores[sub] : "-");
-                const row = [
+                sheetRows.push([
                     idx + 1,
                     student.name,
                     student.gender,
                     ...subScores,
                     `${student.totalScore} / ${student.maxPossible}`,
                     student.status
-                ];
-                sheetRows.push(row);
+                ]);
             });
 
-            // Add blank spacing row before summary table
-            sheetRows.push([]);
-            sheetRows.push(["--- CLASS PERFORMANCE SUMMARY ---"]);
-
-            // 4. Compact Summary Table Rows
+            // 4. Gender Performance Summary Section
+            sheetRows.push([]); // Spacing
+            sheetRows.push(["--- CLASS PERFORMANCE SUMMARY BY GENDER ---"]);
+            
             const totalSat = boysSat + girlsSat;
             const totalPassed = boysPassed + girlsPassed;
             const totalFailed = boysFailed + girlsFailed;
+            
+            const boysPassRate = boysSat > 0 ? ((boysPassed / boysSat) * 100).toFixed(1) + "%" : "0%";
+            const girlsPassRate = girlsSat > 0 ? ((girlsPassed / girlsSat) * 100).toFixed(1) + "%" : "0%";
             const overallPassRate = totalSat > 0 ? ((totalPassed / totalSat) * 100).toFixed(1) + "%" : "0%";
 
-            sheetRows.push(["Category", "Boys", "Girls", "Total"]);
+            sheetRows.push(["CATEGORY", "BOYS", "GIRLS", "TOTAL"]);
             sheetRows.push(["Learners Sat", boysSat, girlsSat, totalSat]);
             sheetRows.push(["Learners Passed", boysPassed, girlsPassed, totalPassed]);
             sheetRows.push(["Learners Failed", boysFailed, girlsFailed, totalFailed]);
-            sheetRows.push(["Pass Rate", boysSat > 0 ? ((boysPassed / boysSat) * 100).toFixed(1) + "%" : "0%", 
-                                        girlsSat > 0 ? ((girlsPassed / girlsSat) * 100).toFixed(1) + "%" : "0%", 
-                                        overallPassRate]);
+            sheetRows.push(["Pass Rate (%)", boysPassRate, girlsPassRate, overallPassRate]);
 
+            // Convert array of arrays to sheet
             const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
 
-            // 5. Compact formatting: Set tight column widths matching text sizes
+            // 5. Column Width Formatting
             const colWidths = [
-                { wch: 5 },   // Pos
-                { wch: 20 },  // Name
-                { wch: 8 },   // Gender
-                ...subjects.map(() => ({ wch: 6 })), // Compact subject scores
-                { wch: 18 },  // Total Marks
-                { wch: 8 }    // Status
+                { wch: 6 },   // POS
+                { wch: 22 },  // NAME
+                { wch: 10 },  // GENDER
+                ...subjects.map(() => ({ wch: 8 })), // SUBJECTS
+                { wch: 16 },  // TOTAL MARKS
+                { wch: 10 }   // STATUS
             ];
             worksheet['!cols'] = colWidths;
 
-            XLSX.utils.book_append_sheet(workbook, worksheet, className);
+            // 6. Add Embedded Performance Chart (Chart.js / SheetJS Drawing Spec)
+            // Summary table row offsets for chart reference
+            const summaryStartRow = sheetRows.length - 4; // Learners Sat row index
+            
+            worksheet['!charts'] = [{
+                type: 'bar',
+                title: `${className} Gender Performance Breakdown`,
+                position: {
+                    from: { col: 1, row: sheetRows.length + 2 },
+                    to: { col: 6, row: sheetRows.length + 18 }
+                },
+                data: {
+                    categories: { col: 0, startRow: summaryStartRow, endRow: summaryStartRow + 2 }, // Sat, Passed, Failed
+                    series: [
+                        { name: "Boys", col: 1, startRow: summaryStartRow, endRow: summaryStartRow + 2 },
+                        { name: "Girls", col: 2, startRow: summaryStartRow, endRow: summaryStartRow + 2 }
+                    ]
+                }
+            }];
+
+            const sheetName = className.replace(/[^a-zA-Z0-9]/g, '_');
+            XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
         });
 
-        // 6. Download the generated workbook file
-        XLSX.writeFile(workbook, `Bandawe_All_Classes_${selectedTerm}_${selectedYear}.xlsx`);
-        alert("Export successful!");
+        // Save File
+        const fileName = selectedClass === "ALL" 
+            ? `Bandawe_All_Classes_${selectedTerm}_${selectedYear}.xlsx` 
+            : `Bandawe_${selectedClass.replace(/\s+/g,'_')}_${selectedTerm}_${selectedYear}.xlsx`;
+            
+        XLSX.writeFile(workbook, fileName);
+        alert("Excel export with summary & chart generated successfully!");
 
     } catch (error) {
         console.error("Export Error:", error);
         alert("Export failed: " + error.message);
     }
 };
+
 
 window.backToDashboardFromHistory = function() {
     // Remove history page
