@@ -1201,7 +1201,15 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
         const snapshot = await getDocs(collection(db, "results"));
         const studentsSnapshot = await getDocs(collection(db, "students"));
         
-        // 1. Gender Map Lookup
+        // Helper to escape special XML characters safely
+        const xmlEscape = (str) => String(str || "")
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+
+        // 1. Multi-Field Student Gender Mapping
         let studentGenderMap = {};
         studentsSnapshot.forEach(docSnap => {
             const data = docSnap.data();
@@ -1209,6 +1217,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             if (docSnap.id) studentGenderMap[docSnap.id.trim().toLowerCase()] = g;
             if (data.name) studentGenderMap[data.name.trim().toLowerCase()] = g;
             if (data.studentName) studentGenderMap[data.studentName.trim().toLowerCase()] = g;
+            if (data.fullName) studentGenderMap[data.fullName.trim().toLowerCase()] = g;
         });
 
         // 2. Group Results by Class
@@ -1223,17 +1232,19 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 if (!classGrouped[className]) classGrouped[className] = [];
 
                 const studentName = (data.studentName || data.name || docSnap.id.split('_')[0]).trim();
-                const rawGender = studentGenderMap[studentName.toLowerCase()] || data.gender || data.sex || "Unknown";
+                const rawGender = studentGenderMap[studentName.toLowerCase()] || data.gender || data.sex || data.Gender || data.Sex || "Unknown";
                 
                 let normalizedGender = "Unknown";
                 const gLow = rawGender.toString().trim().toLowerCase();
-                if (gLow === "m" || gLow === "male" || gLow === "boy") normalizedGender = "Male";
-                else if (gLow === "f" || gLow === "female" || gLow === "girl") normalizedGender = "Female";
+                if (gLow === "m" || gLow === "male" || gLow === "boy" || gLow === "boys") normalizedGender = "Male";
+                else if (gLow === "f" || gLow === "female" || gLow === "girl" || gLow === "girls") normalizedGender = "Female";
+                else if (rawGender && rawGender !== "Unknown") normalizedGender = rawGender;
 
                 const scores = data.scores || {};
                 const satSubjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length;
                 const maxPossible = (satSubjectsCount || 1) * 100;
                 const totalScore = data.total || 0;
+                const passStatus = (totalScore / maxPossible) >= 0.4 ? "PASSED" : "FAILED";
 
                 classGrouped[className].push({
                     name: studentName,
@@ -1241,7 +1252,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                     scores: scores,
                     totalScore: totalScore,
                     maxPossible: maxPossible,
-                    status: (totalScore / maxPossible) >= 0.4 ? "PASSED" : "FAILED"
+                    status: passStatus
                 });
             }
         });
@@ -1252,7 +1263,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             return;
         }
 
-        // 3. Build Multi-Worksheet SpreadsheetML (XML)
+        // 3. SpreadsheetML XML Header & Comprehensive Styles
         let xmlHeader = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
@@ -1266,42 +1277,220 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
    <Interior ss:Color="#002244" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
   </Style>
+
   <Style ss:ID="SubHeader">
    <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#003366" ss:Bold="1"/>
    <Interior ss:Color="#E6F0FF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
   </Style>
+
   <Style ss:ID="TableHead">
    <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/>
    <Interior ss:Color="#003366" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#002244"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#002244"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#002244"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#002244"/>
    </Borders>
   </Style>
+
   <Style ss:ID="DataCell">
+   <Font ss:FontName="Calibri" ss:Size="10"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="NameCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="TotalScoreCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/>
+   <Interior ss:Color="#F0F4F8" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="PassCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#155724" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="FailCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#721C24" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryHeader">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/>
+   <Interior ss:Color="#003366" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
   </Style>
-  <Style ss:ID="NameCell">
-   <Font ss:Bold="1"/>
+
+  <Style ss:ID="SummarySub">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#002244" ss:Bold="1"/>
+   <Interior ss:Color="#D9E1F2" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryLabel">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/>
    <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
   </Style>
-  <Style ss:ID="PassCell">
-   <Font ss:Color="#155724" ss:Bold="1"/>
-   <Alignment ss:Horizontal="Center"/>
+
+  <Style ss:ID="SummaryBoldCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
   </Style>
-  <Style ss:ID="FailCell">
-   <Font ss:Color="#721C24" ss:Bold="1"/>
-   <Alignment ss:Horizontal="Center"/>
+
+  <Style ss:ID="SummaryGreenLabel">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#155724" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryGreenCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#155724"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryGreenBoldCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#155724" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryRedLabel">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#721C24" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryRedCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#721C24"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryRedBoldCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#721C24" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDDDDD"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryFooterLabel">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#003366" ss:Bold="1"/>
+   <Interior ss:Color="#E6F0FF" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+   </Borders>
+  </Style>
+
+  <Style ss:ID="SummaryFooterCell">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#003366" ss:Bold="1"/>
+   <Interior ss:Color="#E6F0FF" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#B0C4DE"/>
+   </Borders>
   </Style>
  </Styles>\n`;
 
         let xmlWorksheets = "";
 
+        // 4. Build Worksheet per Class
         classKeys.forEach(className => {
             const list = classGrouped[className];
             list.sort((a, b) => b.totalScore - a.totalScore);
 
+            // Collect unique subjects sat across this class (score > 0)
             let classSubjectsSet = new Set();
             list.forEach(s => {
                 Object.keys(s.scores).forEach(sub => {
@@ -1310,30 +1499,47 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             });
             const classSubjects = Array.from(classSubjectsSet);
             const totalCols = classSubjects.length + 5;
+            const worksheetTabName = className.replace(/[/\\?*:[\]]/g, '');
 
-            xmlWorksheets += ` <Worksheet ss:Name="${className.replace(/[/\\?*:[\]]/g, '')}">\n  <Table>\n`;
+            xmlWorksheets += ` <Worksheet ss:Name="${xmlEscape(worksheetTabName)}">\n  <Table>\n`;
             
-            // Title Row
-            xmlWorksheets += `   <Row ss:Height="25">\n    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="Title"><Data ss:Type="String">BANDAWE DEAF PRIMARY SCHOOL - ${className.toUpperCase()} EXAMINATION RESULTS</Data></Cell>\n   </Row>\n`;
-            xmlWorksheets += `   <Row ss:Height="20">\n    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="SubHeader"><Data ss:Type="String">Term: ${selectedTerm} | Academic Year: ${selectedYear}</Data></Cell>\n   </Row>\n   <Row/>\n`;
+            // Title Rows
+            xmlWorksheets += `   <Row ss:Height="25">\n    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="Title"><Data ss:Type="String">BANDAWE DEAF PRIMARY SCHOOL - ${xmlEscape(className.toUpperCase())} EXAMINATION RESULTS</Data></Cell>\n   </Row>\n`;
+            xmlWorksheets += `   <Row ss:Height="20">\n    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="SubHeader"><Data ss:Type="String">Term: ${xmlEscape(selectedTerm)} | Academic Year: ${xmlEscape(selectedYear)}</Data></Cell>\n   </Row>\n   <Row/>\n`;
 
-            // Table Header
+            // Main Results Table Headers
             xmlWorksheets += `   <Row ss:Height="22">\n`;
             xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">POS</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">STUDENT NAME</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">GENDER</Data></Cell>\n`;
             classSubjects.forEach(sub => {
-                xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">${sub.toUpperCase()}</Data></Cell>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">${xmlEscape(sub.toUpperCase())}</Data></Cell>\n`;
             });
             xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">TOTAL MARKS</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">STATUS</Data></Cell>\n   </Row>\n`;
 
-            // Data Rows
+            // Track Gender Metrics
+            let boysSat = 0, girlsSat = 0;
+            let boysPassed = 0, girlsPassed = 0;
+            let boysFailed = 0, girlsFailed = 0;
+
+            // Student Score Rows
             list.forEach((student, idx) => {
+                const g = student.gender.toLowerCase();
+                if (g === "male" || g === "m" || g === "boy") {
+                    boysSat++;
+                    if (student.status === "PASSED") boysPassed++;
+                    else boysFailed++;
+                } else if (g === "female" || g === "f" || g === "girl") {
+                    girlsSat++;
+                    if (student.status === "PASSED") girlsPassed++;
+                    else girlsFailed++;
+                }
+
                 xmlWorksheets += `   <Row>\n`;
                 xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${idx + 1}</Data></Cell>\n`;
-                xmlWorksheets += `    <Cell ss:StyleID="NameCell"><Data ss:Type="String">${student.name}</Data></Cell>\n`;
-                xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="String">${student.gender}</Data></Cell>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="NameCell"><Data ss:Type="String">${xmlEscape(student.name)}</Data></Cell>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="String">${xmlEscape(student.gender)}</Data></Cell>\n`;
                 
                 classSubjects.forEach(sub => {
                     const val = Number(student.scores[sub]);
@@ -1345,9 +1551,65 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 });
 
                 const statusStyle = student.status === "PASSED" ? "PassCell" : "FailCell";
-                xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="String">${student.totalScore} / ${student.maxPossible}</Data></Cell>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="TotalScoreCell"><Data ss:Type="String">${student.totalScore} / ${student.maxPossible}</Data></Cell>\n`;
                 xmlWorksheets += `    <Cell ss:StyleID="${statusStyle}"><Data ss:Type="String">${student.status}</Data></Cell>\n   </Row>\n`;
             });
+
+            // 5. CLASS PERFORMANCE ANALYSIS BY GENDER (Summary Section)
+            const totalSat = boysSat + girlsSat;
+            const totalPassed = boysPassed + girlsPassed;
+            const totalFailed = boysFailed + girlsFailed;
+
+            const boysPassRate = boysSat > 0 ? ((boysPassed / boysSat) * 100).toFixed(1) + "%" : "0%";
+            const girlsPassRate = girlsSat > 0 ? ((girlsPassed / girlsSat) * 100).toFixed(1) + "%" : "0%";
+            const overallPassRate = totalSat > 0 ? ((totalPassed / totalSat) * 100).toFixed(1) + "%" : "0%";
+
+            xmlWorksheets += `   <Row/>\n`; // Spacing row
+
+            // Summary Header
+            xmlWorksheets += `   <Row ss:Height="22">\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="SummaryHeader"><Data ss:Type="String">CLASS PERFORMANCE ANALYSIS BY GENDER</Data></Cell>\n`;
+            xmlWorksheets += `   </Row>\n`;
+
+            // Summary Sub Header
+            xmlWorksheets += `   <Row ss:Height="20">\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummarySub"><Data ss:Type="String">CATEGORY</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummarySub"><Data ss:Type="String">BOYS</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummarySub"><Data ss:Type="String">GIRLS</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummarySub"><Data ss:Type="String">TOTAL</Data></Cell>\n`;
+            xmlWorksheets += `   </Row>\n`;
+
+            // Row: Learners Sat
+            xmlWorksheets += `   <Row ss:Height="18">\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryLabel"><Data ss:Type="String">Learners Sat</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${boysSat}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${girlsSat}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryBoldCell"><Data ss:Type="Number">${totalSat}</Data></Cell>\n`;
+            xmlWorksheets += `   </Row>\n`;
+
+            // Row: Learners Passed
+            xmlWorksheets += `   <Row ss:Height="18">\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryGreenLabel"><Data ss:Type="String">Learners Passed</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummaryGreenCell"><Data ss:Type="Number">${boysPassed}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummaryGreenCell"><Data ss:Type="Number">${girlsPassed}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryGreenBoldCell"><Data ss:Type="Number">${totalPassed}</Data></Cell>\n`;
+            xmlWorksheets += `   </Row>\n`;
+
+            // Row: Learners Failed
+            xmlWorksheets += `   <Row ss:Height="18">\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryRedLabel"><Data ss:Type="String">Learners Failed</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummaryRedCell"><Data ss:Type="Number">${boysFailed}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummaryRedCell"><Data ss:Type="Number">${girlsFailed}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryRedBoldCell"><Data ss:Type="Number">${totalFailed}</Data></Cell>\n`;
+            xmlWorksheets += `   </Row>\n`;
+
+            // Row: Pass Rate (%)
+            xmlWorksheets += `   <Row ss:Height="20">\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryFooterLabel"><Data ss:Type="String">Pass Rate (%)</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummaryFooterCell"><Data ss:Type="String">${boysPassRate}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="SummaryFooterCell"><Data ss:Type="String">${girlsPassRate}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryFooterCell"><Data ss:Type="String">${overallPassRate}</Data></Cell>\n`;
+            xmlWorksheets += `   </Row>\n`;
 
             xmlWorksheets += `  </Table>\n </Worksheet>\n`;
         });
