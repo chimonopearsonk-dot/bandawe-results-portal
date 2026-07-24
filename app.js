@@ -1195,13 +1195,12 @@ window.viewStudentHistory = async function(studentName) {
         historyPage.innerHTML = `<div style="max-width:900px;margin:20px auto;padding:20px;"><p style="color:red;">Error: ${e.message}</p><button onclick="backToDashboardFromHistory()" style="margin-top:15px;padding:10px 20px;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">Back</button></div>`;
     }
 };
-
 window.exportAllClassesResults = async function(selectedTerm = "Term 3", selectedYear = "2026", selectedClass = "ALL") {
     try {
         const snapshot = await getDocs(collection(db, "results"));
         const studentsSnapshot = await getDocs(collection(db, "students"));
         
-        // Helper to escape special XML characters safely
+        // Safe XML character escape
         const xmlEscape = (str) => String(str || "")
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -1263,7 +1262,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             return;
         }
 
-        // 3. SpreadsheetML XML Header & Comprehensive Styles
+        // 3. SpreadsheetML XML Header & Styles
         let xmlHeader = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
@@ -1275,7 +1274,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
   <Style ss:ID="Title">
    <Font ss:FontName="Calibri" ss:Size="14" ss:Color="#FFFFFF" ss:Bold="1"/>
    <Interior ss:Color="#002244" ss:Pattern="Solid"/>
-   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
   </Style>
 
   <Style ss:ID="SubHeader">
@@ -1287,7 +1286,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
   <Style ss:ID="TableHead">
    <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/>
    <Interior ss:Color="#003366" ss:Pattern="Solid"/>
-   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#002244"/>
     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#002244"/>
@@ -1490,7 +1489,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             const list = classGrouped[className];
             list.sort((a, b) => b.totalScore - a.totalScore);
 
-            // Collect unique subjects sat across this class (score > 0)
+            // Collect unique subjects sat across this class
             let classSubjectsSet = new Set();
             list.forEach(s => {
                 Object.keys(s.scores).forEach(sub => {
@@ -1502,6 +1501,16 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             const worksheetTabName = className.replace(/[/\\?*:[\]]/g, '');
 
             xmlWorksheets += ` <Worksheet ss:Name="${xmlEscape(worksheetTabName)}">\n  <Table>\n`;
+
+            // EXPLICIT COLUMN WIDTHS (Prevents text clipping)
+            xmlWorksheets += `   <Column ss:Width="45"/>\n`;  // POS
+            xmlWorksheets += `   <Column ss:Width="180"/>\n`; // STUDENT NAME (Generous width)
+            xmlWorksheets += `   <Column ss:Width="70"/>\n`;  // GENDER
+            classSubjects.forEach(() => {
+                xmlWorksheets += `   <Column ss:Width="85"/>\n`; // SUBJECTS
+            });
+            xmlWorksheets += `   <Column ss:Width="105"/>\n`; // TOTAL MARKS
+            xmlWorksheets += `   <Column ss:Width="85"/>\n`;  // STATUS
             
             // Title Rows
             xmlWorksheets += `   <Row ss:Height="25">\n    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="Title"><Data ss:Type="String">BANDAWE DEAF PRIMARY SCHOOL - ${xmlEscape(className.toUpperCase())} EXAMINATION RESULTS</Data></Cell>\n   </Row>\n`;
@@ -1536,7 +1545,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                     else girlsFailed++;
                 }
 
-                xmlWorksheets += `   <Row>\n`;
+                xmlWorksheets += `   <Row ss:Height="19">\n`;
                 xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${idx + 1}</Data></Cell>\n`;
                 xmlWorksheets += `    <Cell ss:StyleID="NameCell"><Data ss:Type="String">${xmlEscape(student.name)}</Data></Cell>\n`;
                 xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="String">${xmlEscape(student.gender)}</Data></Cell>\n`;
@@ -1555,7 +1564,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 xmlWorksheets += `    <Cell ss:StyleID="${statusStyle}"><Data ss:Type="String">${student.status}</Data></Cell>\n   </Row>\n`;
             });
 
-            // 5. CLASS PERFORMANCE ANALYSIS BY GENDER (Summary Section)
+            // 5. CLASS PERFORMANCE ANALYSIS BY GENDER (Compact & Left-Aligned)
             const totalSat = boysSat + girlsSat;
             const totalPassed = boysPassed + girlsPassed;
             const totalFailed = boysFailed + girlsFailed;
@@ -1564,11 +1573,11 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             const girlsPassRate = girlsSat > 0 ? ((girlsPassed / girlsSat) * 100).toFixed(1) + "%" : "0%";
             const overallPassRate = totalSat > 0 ? ((totalPassed / totalSat) * 100).toFixed(1) + "%" : "0%";
 
-            xmlWorksheets += `   <Row/>\n`; // Spacing row
+            xmlWorksheets += `   <Row/>\n`; // Blank separator row
 
-            // Summary Header
+            // Summary Header (Fixed 6-column span)
             xmlWorksheets += `   <Row ss:Height="22">\n`;
-            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="SummaryHeader"><Data ss:Type="String">CLASS PERFORMANCE ANALYSIS BY GENDER</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="5" ss:StyleID="SummaryHeader"><Data ss:Type="String">CLASS PERFORMANCE ANALYSIS BY GENDER</Data></Cell>\n`;
             xmlWorksheets += `   </Row>\n`;
 
             // Summary Sub Header
@@ -1576,7 +1585,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummarySub"><Data ss:Type="String">CATEGORY</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummarySub"><Data ss:Type="String">BOYS</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummarySub"><Data ss:Type="String">GIRLS</Data></Cell>\n`;
-            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummarySub"><Data ss:Type="String">TOTAL</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummarySub"><Data ss:Type="String">TOTAL</Data></Cell>\n`;
             xmlWorksheets += `   </Row>\n`;
 
             // Row: Learners Sat
@@ -1584,7 +1593,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryLabel"><Data ss:Type="String">Learners Sat</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${boysSat}</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${girlsSat}</Data></Cell>\n`;
-            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryBoldCell"><Data ss:Type="Number">${totalSat}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryBoldCell"><Data ss:Type="Number">${totalSat}</Data></Cell>\n`;
             xmlWorksheets += `   </Row>\n`;
 
             // Row: Learners Passed
@@ -1592,7 +1601,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryGreenLabel"><Data ss:Type="String">Learners Passed</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummaryGreenCell"><Data ss:Type="Number">${boysPassed}</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummaryGreenCell"><Data ss:Type="Number">${girlsPassed}</Data></Cell>\n`;
-            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryGreenBoldCell"><Data ss:Type="Number">${totalPassed}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryGreenBoldCell"><Data ss:Type="Number">${totalPassed}</Data></Cell>\n`;
             xmlWorksheets += `   </Row>\n`;
 
             // Row: Learners Failed
@@ -1600,7 +1609,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryRedLabel"><Data ss:Type="String">Learners Failed</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummaryRedCell"><Data ss:Type="Number">${boysFailed}</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummaryRedCell"><Data ss:Type="Number">${girlsFailed}</Data></Cell>\n`;
-            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryRedBoldCell"><Data ss:Type="Number">${totalFailed}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryRedBoldCell"><Data ss:Type="Number">${totalFailed}</Data></Cell>\n`;
             xmlWorksheets += `   </Row>\n`;
 
             // Row: Pass Rate (%)
@@ -1608,7 +1617,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryFooterLabel"><Data ss:Type="String">Pass Rate (%)</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummaryFooterCell"><Data ss:Type="String">${boysPassRate}</Data></Cell>\n`;
             xmlWorksheets += `    <Cell ss:StyleID="SummaryFooterCell"><Data ss:Type="String">${girlsPassRate}</Data></Cell>\n`;
-            xmlWorksheets += `    <Cell ss:MergeAcross="${totalCols - 5}" ss:StyleID="SummaryFooterCell"><Data ss:Type="String">${overallPassRate}</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:MergeAcross="1" ss:StyleID="SummaryFooterCell"><Data ss:Type="String">${overallPassRate}</Data></Cell>\n`;
             xmlWorksheets += `   </Row>\n`;
 
             xmlWorksheets += `  </Table>\n </Worksheet>\n`;
