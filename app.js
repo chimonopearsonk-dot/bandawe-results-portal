@@ -1201,17 +1201,14 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
         const snapshot = await getDocs(collection(db, "results"));
         const studentsSnapshot = await getDocs(collection(db, "students"));
         
-        // 1. Multi-Field Student Gender Lookup Map
+        // 1. Gender Map Lookup
         let studentGenderMap = {};
         studentsSnapshot.forEach(docSnap => {
             const data = docSnap.data();
             const g = data.gender || data.sex || data.Gender || data.Sex || "";
-            
-            // Map across all possible name identifiers
             if (docSnap.id) studentGenderMap[docSnap.id.trim().toLowerCase()] = g;
             if (data.name) studentGenderMap[data.name.trim().toLowerCase()] = g;
             if (data.studentName) studentGenderMap[data.studentName.trim().toLowerCase()] = g;
-            if (data.fullName) studentGenderMap[data.fullName.trim().toLowerCase()] = g;
         });
 
         // 2. Group Results by Class
@@ -1225,31 +1222,18 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 const className = data.class || "Unknown Class";
                 if (!classGrouped[className]) classGrouped[className] = [];
 
-                // Extract student name
                 const studentName = (data.studentName || data.name || docSnap.id.split('_')[0]).trim();
-                const nameKey = studentName.toLowerCase();
+                const rawGender = studentGenderMap[studentName.toLowerCase()] || data.gender || data.sex || "Unknown";
                 
-                // Lookup gender from map OR direct result record fallback
-                let rawGender = studentGenderMap[nameKey] || data.gender || data.sex || data.Gender || data.Sex || "Unknown";
-                
-                // Normalize gender format (handles 'M', 'F', 'Male', 'Female', 'Boy', 'Girl')
                 let normalizedGender = "Unknown";
                 const gLow = rawGender.toString().trim().toLowerCase();
-                if (gLow === "m" || gLow === "male" || gLow === "boy" || gLow === "boys") {
-                    normalizedGender = "Male";
-                } else if (gLow === "f" || gLow === "female" || gLow === "girl" || gLow === "girls") {
-                    normalizedGender = "Female";
-                } else if (rawGender && rawGender !== "Unknown") {
-                    normalizedGender = rawGender;
-                }
+                if (gLow === "m" || gLow === "male" || gLow === "boy") normalizedGender = "Male";
+                else if (gLow === "f" || gLow === "female" || gLow === "girl") normalizedGender = "Female";
 
                 const scores = data.scores || {};
-                
-                // Count strictly subjects actually sat with score > 0
                 const satSubjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length;
                 const maxPossible = (satSubjectsCount || 1) * 100;
                 const totalScore = data.total || 0;
-                const passStatus = (totalScore / maxPossible) >= 0.4 ? "PASSED" : "FAILED";
 
                 classGrouped[className].push({
                     name: studentName,
@@ -1257,168 +1241,121 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                     scores: scores,
                     totalScore: totalScore,
                     maxPossible: maxPossible,
-                    status: passStatus
+                    status: (totalScore / maxPossible) >= 0.4 ? "PASSED" : "FAILED"
                 });
             }
         });
 
-        if (Object.keys(classGrouped).length === 0) {
-            alert(`No results found for ${selectedClass === "ALL" ? "any class" : selectedClass} in ${selectedTerm} ${selectedYear}.`);
+        const classKeys = Object.keys(classGrouped).sort();
+        if (classKeys.length === 0) {
+            alert(`No results found for ${selectedClass} (${selectedTerm} ${selectedYear}).`);
             return;
         }
 
-        // 3. Build HTML Spreadsheet (Exact Styling Preserved)
-        let excelHtml = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body { font-family: Calibri, Arial, sans-serif; }
-                .title-header { background-color: #002244; color: #ffffff; font-size: 16pt; font-weight: bold; text-align: center; }
-                .sub-header { background-color: #e6f0ff; color: #003366; font-size: 11pt; font-weight: bold; text-align: center; }
-                .table-head { background-color: #003366 !important; color: #ffffff !important; font-weight: bold; text-align: center; border: 1px solid #002244; }
-                .data-row { border: 1px solid #dddddd; }
-                .summary-header { background-color: #003366; color: #ffffff; font-weight: bold; text-align: center; }
-                .summary-sub { background-color: #d9e1f2; font-weight: bold; text-align: center; }
-                .pass-text { color: #155724; font-weight: bold; }
-                .fail-text { color: #721c24; font-weight: bold; }
-            </style>
-        </head>
-        <body>`;
+        // 3. Build Multi-Worksheet SpreadsheetML (XML)
+        let xmlHeader = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Title">
+   <Font ss:FontName="Calibri" ss:Size="14" ss:Color="#FFFFFF" ss:Bold="1"/>
+   <Interior ss:Color="#002244" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="SubHeader">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#003366" ss:Bold="1"/>
+   <Interior ss:Color="#E6F0FF" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="TableHead">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/>
+   <Interior ss:Color="#003366" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#002244"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="DataCell">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="NameCell">
+   <Font ss:Bold="1"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="PassCell">
+   <Font ss:Color="#155724" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center"/>
+  </Style>
+  <Style ss:ID="FailCell">
+   <Font ss:Color="#721C24" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center"/>
+  </Style>
+ </Styles>\n`;
 
-        Object.keys(classGrouped).sort().forEach(className => {
+        let xmlWorksheets = "";
+
+        classKeys.forEach(className => {
             const list = classGrouped[className];
             list.sort((a, b) => b.totalScore - a.totalScore);
 
-            // Collect unique subjects sat across this class (score > 0)
             let classSubjectsSet = new Set();
             list.forEach(s => {
                 Object.keys(s.scores).forEach(sub => {
-                    if (Number(s.scores[sub]) > 0) {
-                        classSubjectsSet.add(sub);
-                    }
+                    if (Number(s.scores[sub]) > 0) classSubjectsSet.add(sub);
                 });
             });
             const classSubjects = Array.from(classSubjectsSet);
+            const totalCols = classSubjects.length + 5;
 
-            excelHtml += `
-            <table border="1" style="border-collapse: collapse; width: 100%; margin-bottom: 30px;">
-                <tr>
-                    <td colspan="${classSubjects.length + 5}" class="title-header" style="padding:10px;">
-                        BANDAWE DEAF PRIMARY SCHOOL - ${className.toUpperCase()} EXAMINATION RESULTS
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="${classSubjects.length + 5}" class="sub-header" style="padding:6px;">
-                        Term: ${selectedTerm} | Academic Year: ${selectedYear}
-                    </td>
-                </tr>
-                <tr style="height: 10px;"><td colspan="${classSubjects.length + 5}"></td></tr>
-
-                <!-- SCORES TABLE HEADERS -->
-                <tr>
-                    <th class="table-head">POS</th>
-                    <th class="table-head" style="text-align:left;">STUDENT NAME</th>
-                    <th class="table-head">GENDER</th>`;
+            xmlWorksheets += ` <Worksheet ss:Name="${className.replace(/[/\\?*:[\]]/g, '')}">\n  <Table>\n`;
             
+            // Title Row
+            xmlWorksheets += `   <Row ss:Height="25">\n    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="Title"><Data ss:Type="String">BANDAWE DEAF PRIMARY SCHOOL - ${className.toUpperCase()} EXAMINATION RESULTS</Data></Cell>\n   </Row>\n`;
+            xmlWorksheets += `   <Row ss:Height="20">\n    <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="SubHeader"><Data ss:Type="String">Term: ${selectedTerm} | Academic Year: ${selectedYear}</Data></Cell>\n   </Row>\n   <Row/>\n`;
+
+            // Table Header
+            xmlWorksheets += `   <Row ss:Height="22">\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">POS</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">STUDENT NAME</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">GENDER</Data></Cell>\n`;
             classSubjects.forEach(sub => {
-                excelHtml += `<th class="table-head">${sub.toUpperCase()}</th>`;
+                xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">${sub.toUpperCase()}</Data></Cell>\n`;
             });
+            xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">TOTAL MARKS</Data></Cell>\n`;
+            xmlWorksheets += `    <Cell ss:StyleID="TableHead"><Data ss:Type="String">STATUS</Data></Cell>\n   </Row>\n`;
 
-            excelHtml += `
-                    <th class="table-head">TOTAL MARKS</th>
-                    <th class="table-head">STATUS</th>
-                </tr>`;
-
-            let boysSat = 0, girlsSat = 0;
-            let boysPassed = 0, girlsPassed = 0;
-            let boysFailed = 0, girlsFailed = 0;
-
+            // Data Rows
             list.forEach((student, idx) => {
-                const g = student.gender.toLowerCase();
-                if (g === "male" || g === "m" || g === "boy") {
-                    boysSat++;
-                    if (student.status === "PASSED") boysPassed++;
-                    else boysFailed++;
-                } else if (g === "female" || g === "f" || g === "girl") {
-                    girlsSat++;
-                    if (student.status === "PASSED") girlsPassed++;
-                    else girlsFailed++;
-                }
-
-                excelHtml += `
-                <tr class="data-row">
-                    <td style="text-align:center; font-weight:bold;">${idx + 1}</td>
-                    <td style="text-align:left; font-weight:bold;">${student.name}</td>
-                    <td style="text-align:center;">${student.gender}</td>`;
-
+                xmlWorksheets += `   <Row>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${idx + 1}</Data></Cell>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="NameCell"><Data ss:Type="String">${student.name}</Data></Cell>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="String">${student.gender}</Data></Cell>\n`;
+                
                 classSubjects.forEach(sub => {
                     const val = Number(student.scores[sub]);
-                    const mark = (student.scores[sub] !== undefined && val > 0) ? val : "-";
-                    excelHtml += `<td style="text-align:center;">${mark}</td>`;
+                    if (student.scores[sub] !== undefined && val > 0) {
+                        xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="Number">${val}</Data></Cell>\n`;
+                    } else {
+                        xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="String">-</Data></Cell>\n`;
+                    }
                 });
 
-                const statusClass = student.status === "PASSED" ? "pass-text" : "fail-text";
-                excelHtml += `
-                    <td style="text-align:center; font-weight:bold; background-color:#f0f4f8;">${student.totalScore} / ${student.maxPossible}</td>
-                    <td style="text-align:center;" class="${statusClass}">${student.status}</td>
-                </tr>`;
+                const statusStyle = student.status === "PASSED" ? "PassCell" : "FailCell";
+                xmlWorksheets += `    <Cell ss:StyleID="DataCell"><Data ss:Type="String">${student.totalScore} / ${student.maxPossible}</Data></Cell>\n`;
+                xmlWorksheets += `    <Cell ss:StyleID="${statusStyle}"><Data ss:Type="String">${student.status}</Data></Cell>\n   </Row>\n`;
             });
 
-            // GENDER SUMMARY ANALYSIS TABLE
-            const totalSat = boysSat + girlsSat;
-            const totalPassed = boysPassed + girlsPassed;
-            const totalFailed = boysFailed + girlsFailed;
-            
-            const boysPassRate = boysSat > 0 ? ((boysPassed / boysSat) * 100).toFixed(1) + "%" : "0%";
-            const girlsPassRate = girlsSat > 0 ? ((girlsPassed / girlsSat) * 100).toFixed(1) + "%" : "0%";
-            const overallPassRate = totalSat > 0 ? ((totalPassed / totalSat) * 100).toFixed(1) + "%" : "0%";
-
-            excelHtml += `
-                <tr style="height: 15px;"><td colspan="${classSubjects.length + 5}"></td></tr>
-                <tr>
-                    <td colspan="${classSubjects.length + 5}" class="summary-header" style="padding:6px;">
-                        CLASS PERFORMANCE ANALYSIS BY GENDER
-                    </td>
-                </tr>
-                <tr>
-                    <th colspan="2" class="summary-sub">CATEGORY</th>
-                    <th class="summary-sub">BOYS</th>
-                    <th class="summary-sub">GIRLS</th>
-                    <th class="summary-sub" colspan="2">TOTAL</th>
-                </tr>
-                <tr>
-                    <td colspan="2" style="font-weight:bold; padding:4px;">Learners Sat</td>
-                    <td style="text-align:center;">${boysSat}</td>
-                    <td style="text-align:center;">${girlsSat}</td>
-                    <td style="text-align:center; font-weight:bold;" colspan="2">${totalSat}</td>
-                </tr>
-                <tr>
-                    <td colspan="2" style="font-weight:bold; padding:4px; color:green;">Learners Passed</td>
-                    <td style="text-align:center; color:green;">${boysPassed}</td>
-                    <td style="text-align:center; color:green;">${girlsPassed}</td>
-                    <td style="text-align:center; font-weight:bold; color:green;" colspan="2">${totalPassed}</td>
-                </tr>
-                <tr>
-                    <td colspan="2" style="font-weight:bold; padding:4px; color:red;">Learners Failed</td>
-                    <td style="text-align:center; color:red;">${boysFailed}</td>
-                    <td style="text-align:center; color:red;">${girlsFailed}</td>
-                    <td style="text-align:center; font-weight:bold; color:red;" colspan="2">${totalFailed}</td>
-                </tr>
-                <tr style="background-color:#e6f0ff;">
-                    <td colspan="2" style="font-weight:bold; padding:6px; color:#003366;">Pass Rate (%)</td>
-                    <td style="text-align:center; font-weight:bold; color:#003366;">${boysPassRate}</td>
-                    <td style="text-align:center; font-weight:bold; color:#003366;">${girlsPassRate}</td>
-                    <td style="text-align:center; font-weight:bold; color:#003366;" colspan="2">${overallPassRate}</td>
-                </tr>
-            </table>
-            <br/><br/>`;
+            xmlWorksheets += `  </Table>\n </Worksheet>\n`;
         });
 
-        excelHtml += `</body></html>`;
+        const fullXml = xmlHeader + xmlWorksheets + `</Workbook>`;
 
-        // Download as styled Excel file (.xls)
-        const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        // Download as XML Excel file (.xls)
+        const blob = new Blob([fullXml], { type: 'application/vnd.ms-excel;charset=utf-8' });
         const link = document.createElement('a');
         const fileName = selectedClass === "ALL" 
             ? `Bandawe_Deaf_All_Classes_${selectedTerm}_${selectedYear}.xls` 
