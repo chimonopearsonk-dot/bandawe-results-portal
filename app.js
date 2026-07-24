@@ -986,12 +986,13 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
                     const scores = d.scores || {};
                     // Count only subjects actually sat with score > 0
                     const satSubjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length;
-                    const maxMarks = (satSubjectsCount || 1) * 100;
+                    const maxMarks = (satSubjectsCount > 0 ? satSubjectsCount : 1) * 100;
 
                     classData[clsName].push({ 
                         name: docSnap.id.split('_')[0], 
                         total: d.total || 0, 
                         maxMarks: maxMarks,
+                        satCount: satSubjectsCount,
                         scores: scores 
                     });
                 }
@@ -1088,7 +1089,6 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
     }
 };
 
-// Helper function to refresh dashboard when filters change
 window.refreshDashboard = function() {
     const cls = document.getElementById("dashClass")?.value || "ALL";
     const term = document.getElementById("dashTerm")?.value || "Term 3";
@@ -1096,13 +1096,13 @@ window.refreshDashboard = function() {
     window.showClassDashboard(term, year, cls);
 };
 
-// Helper trigger for export button
 window.triggerClassExport = function() {
     const cls = document.getElementById("dashClass")?.value || "ALL";
     const term = document.getElementById("dashTerm")?.value || "Term 3";
     const year = document.getElementById("dashYear")?.value || "2026";
     window.exportAllClassesResults(term, year, cls);
 };
+
 window.showGradeSummary = async function() {
     window.openAdminPage();
     document.getElementById("adminArea").innerHTML = `<p>Loading Grade Summary...</p>`;
