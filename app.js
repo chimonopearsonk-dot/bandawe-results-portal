@@ -958,19 +958,9 @@ window.downloadTemplate = function() {
 };
 
 // ================= CLASS PERFORMANCE DASHBOARD =================
-window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear = "2026") {
-    document.getElementById("adminPanel").classList.add("hidden");
-    document.getElementById("adminPerformancePage").classList.remove("hidden");
+window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear = "2026", selectedClass = "ALL") {
+    document.getElementById("adminPanel")?.classList.add("hidden");
     
-    // Hide any other open pages
-    const pages = ["adminStudentPage", "adminCalendarPage", "adminNoticesPage", 
-                   "adminViewStudentsPage", "adminBulkPage", "adminResultsPage"];
-    pages.forEach(pageId => {
-        const el = document.getElementById(pageId);
-        if (el) el.classList.add("hidden");
-    });
-    
-    // Create a new container for performance if it doesn't exist
     let perfPage = document.getElementById("adminPerformancePage");
     if (!perfPage) {
         perfPage = document.createElement("div");
@@ -978,125 +968,139 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
         document.body.appendChild(perfPage);
     }
     perfPage.classList.remove("hidden");
-    perfPage.innerHTML = `<div style="max-width:1000px;margin:20px auto;padding:20px;"><p>Loading Class Performance...</p></div>`;
+    perfPage.innerHTML = `<div style="max-width:1000px;margin:20px auto;padding:20px;text-align:center;"><h3>Loading Class Performance...</h3></div>`;
     
     try {
         const snapshot = await getDocs(collection(db, "results"));
         let classData = {};
+
         snapshot.forEach(docSnap => {
             const d = docSnap.data();
-            if (d.term === selectedTerm && d.year == selectedYear) {
-                if (!classData[d.class]) classData[d.class] = [];
-                classData[d.class].push({ name: docSnap.id.split('_')[0], total: d.total || 0, scores: d.scores || {} });
+            if (d.term === selectedTerm && String(d.year) === String(selectedYear)) {
+                const clsName = d.class || "Unknown Class";
+                
+                // Filter by selected class
+                if (selectedClass === "ALL" || clsName === selectedClass) {
+                    if (!classData[clsName]) classData[clsName] = [];
+                    
+                    const scores = d.scores || {};
+                    const subjectsSatCount = Object.keys(scores).length || 6; // actual subjects sat
+                    const maxMarks = subjectsSatCount * 100;
+
+                    classData[clsName].push({ 
+                        name: docSnap.id.split('_')[0], 
+                        total: d.total || 0, 
+                        maxMarks: maxMarks,
+                        scores: scores 
+                    });
+                }
             }
         });
         
         let html = `
             <div style="max-width:1000px;margin:20px auto;padding:20px;">
-                <button onclick="backToDashboard()" style="margin-bottom:15px;">← Back to Dashboard</button><h3>Class Performance Dashboard</h3>
-                <div style="margin:15px 0; padding:15px; background:#f8f9ff; border-radius:10px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <!-- CLASS SELECTOR -->
-        <select id="dashClass" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc; font-weight: bold; color: #003366;">
-            <option value="ALL">All Classes</option>
-            <option value="Standard 1">Standard 1</option>
-            <option value="Standard 2">Standard 2</option>
-            <option value="Standard 3">Standard 3</option>
-            <option value="Standard 4">Standard 4</option>
-            <option value="Standard 5">Standard 5</option>
-            <option value="Standard 6">Standard 6</option>
-            <option value="Standard 7">Standard 7</option>
-            <option value="Standard 8">Standard 8</option>
-        </select>
+                <button onclick="backToDashboard()" style="margin-bottom:15px; padding:10px 16px; border-radius:8px; cursor:pointer; background:#003366; color:white; border:none; font-weight:bold;">← Back to Dashboard</button>
+                <h2 style="color:#003366;">Class Performance Dashboard</h2>
+                
+                <div style="margin:15px 0; padding:15px; background:#f8f9ff; border-radius:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <!-- CLASS FILTER DROPDOWN -->
+                        <select id="dashClass" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc; font-weight:bold; color:#003366;">
+                            <option value="ALL" ${selectedClass === "ALL" ? "selected" : ""}>All Classes</option>
+                            <option value="Standard 1" ${selectedClass === "Standard 1" ? "selected" : ""}>Standard 1</option>
+                            <option value="Standard 2" ${selectedClass === "Standard 2" ? "selected" : ""}>Standard 2</option>
+                            <option value="Standard 3" ${selectedClass === "Standard 3" ? "selected" : ""}>Standard 3</option>
+                            <option value="Standard 4" ${selectedClass === "Standard 4" ? "selected" : ""}>Standard 4</option>
+                            <option value="Standard 5" ${selectedClass === "Standard 5" ? "selected" : ""}>Standard 5</option>
+                            <option value="Standard 6" ${selectedClass === "Standard 6" ? "selected" : ""}>Standard 6</option>
+                            <option value="Standard 7" ${selectedClass === "Standard 7" ? "selected" : ""}>Standard 7</option>
+                            <option value="Standard 8" ${selectedClass === "Standard 8" ? "selected" : ""}>Standard 8</option>
+                        </select>
 
-        <!-- TERM SELECTOR -->
-        <select id="dashTerm" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc;">
-            <option value="Term 1" ${selectedTerm === "Term 1" ? "selected" : ""}>Term 1</option>
-            <option value="Term 2" ${selectedTerm === "Term 2" ? "selected" : ""}>Term 2</option>
-            <option value="Term 3" ${selectedTerm === "Term 3" ? "selected" : ""}>Term 3</option>
-        </select>
+                        <!-- TERM FILTER -->
+                        <select id="dashTerm" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc;">
+                            <option value="Term 1" ${selectedTerm === "Term 1" ? "selected" : ""}>Term 1</option>
+                            <option value="Term 2" ${selectedTerm === "Term 2" ? "selected" : ""}>Term 2</option>
+                            <option value="Term 3" ${selectedTerm === "Term 3" ? "selected" : ""}>Term 3</option>
+                        </select>
 
-        <!-- YEAR SELECTOR -->
-        <select id="dashYear" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc;">
-            <option value="2025" ${selectedYear === "2025" ? "selected" : ""}>2025</option>
-            <option value="2026" ${selectedYear === "2026" ? "selected" : ""}>2026</option>
-            <option value="2027" ${selectedYear === "2027" ? "selected" : ""}>2027</option>
-        </select>
-    </div>
+                        <!-- YEAR FILTER -->
+                        <select id="dashYear" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc;">
+                            <option value="2025" ${selectedYear === "2025" ? "selected" : ""}>2025</option>
+                            <option value="2026" ${selectedYear === "2026" ? "selected" : ""}>2026</option>
+                            <option value="2027" ${selectedYear === "2027" ? "selected" : ""}>2027</option>
+                        </select>
+                    </div>
 
-    <!-- DYNAMIC EXPORT BUTTON -->
-    <button onclick="triggerClassExport()" style="background: #28a745; color: white; padding: 10px 20px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px;">
-        <i class="fa-solid fa-file-excel"></i> Export Selected Results (Excel)
-    </button>
-</div>`;
+                    <button onclick="triggerClassExport()" style="background:#28a745; color:white; padding:10px 20px; font-size:14px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; display:flex; align-items:center; gap:8px;">
+                        <i class="fa-solid fa-file-excel"></i> Export Selected Results (Excel)
+                    </button>
+                </div>`;
         
-        Object.keys(classData).sort().forEach(cls => {
-            const students = classData[cls];
-            const totalStudents = students.length;
-            if (totalStudents === 0) return;
-            let totalScoreSum = 0;
-            students.forEach(s => totalScoreSum += s.total);
-            const classAverage = (totalScoreSum / totalStudents).toFixed(1);
-            students.sort((a, b) => b.total - a.total);
-            html += `<div style="background:white; padding:20px; margin:15px 0; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.1);">
-                <h4>${cls} (${totalStudents} students) — Class Average: <strong>${classAverage}</strong></h4>
-                <canvas id="chart-${cls.replace(/\s+/g,'')}" style="margin:15px 0; max-height:280px;"></canvas>
-                <table style="width:100%; border-collapse:collapse; margin-top:10px;">
-                <tr style="background:#003366; color:white;"><th style="padding:10px; text-align:left;">Position</th><th style="padding:10px; text-align:left;">Student Name</th><th style="padding:10px; text-align:center;">Total</th><th style="padding:10px; text-align:left;">Action</th></tr>`;
-            students.slice(0, 8).forEach((student, index) => {
-                html += `<tr style="border-bottom:1px solid #eee;"><td style="padding:10px;">${index + 1}</td><td style="padding:10px;">${student.name}</td><td style="padding:10px; text-align:center; font-weight:bold;">${student.total}</td><td style="padding:10px;"><button onclick="viewStudentHistory('${student.name}')" style="padding:6px 12px;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;">History</button></td></tr>`;
+        const sortedClasses = Object.keys(classData).sort();
+        
+        if (sortedClasses.length === 0) {
+            html += `<p style="padding:20px; background:white; border-radius:8px;">No results found for ${selectedClass} (${selectedTerm} ${selectedYear}).</p>`;
+        } else {
+            sortedClasses.forEach(cls => {
+                const students = classData[cls];
+                const totalStudents = students.length;
+                let totalScoreSum = 0;
+                students.forEach(s => totalScoreSum += s.total);
+                const classAverage = (totalScoreSum / totalStudents).toFixed(1);
+                students.sort((a, b) => b.total - a.total);
+
+                html += `
+                <div style="background:white; padding:20px; margin:15px 0; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+                    <h4 style="color:#003366;">${cls} (${totalStudents} students) — Class Average: <strong>${classAverage}</strong></h4>
+                    <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+                        <thead>
+                            <tr style="background:#003366; color:white;">
+                                <th style="padding:10px; text-align:left;">Position</th>
+                                <th style="padding:10px; text-align:left;">Student Name</th>
+                                <th style="padding:10px; text-align:center;">Total Score</th>
+                                <th style="padding:10px; text-align:left;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                
+                students.forEach((student, index) => {
+                    html += `
+                    <tr style="border-bottom:1px solid #eee;">
+                        <td style="padding:10px;">${index + 1}</td>
+                        <td style="padding:10px;">${student.name}</td>
+                        <td style="padding:10px; text-align:center; font-weight:bold;">${student.total} / ${student.maxMarks}</td>
+                        <td style="padding:10px;">
+                            <button onclick="viewStudentHistory('${student.name}')" style="padding:6px 12px; background:#17a2b8; color:white; border:none; border-radius:4px; cursor:pointer;">History</button>
+                        </td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
             });
-            html += `</table></div>`;
-        });
-        
-        if (Object.keys(classData).length === 0) html += `<p>No results found for ${selectedTerm} ${selectedYear}.</p>`;
+        }
         
         html += `</div>`;
         perfPage.innerHTML = html;
-        
-        setTimeout(() => {
-            Object.keys(classData).forEach(cls => {
-                const students = classData[cls].slice(0, 8);
-                const names = students.map(s => s.name.length > 12 ? s.name.substring(0,12)+'...' : s.name);
-                const totals = students.map(s => s.total);
-                const canvas = document.getElementById(`chart-${cls.replace(/\s+/g,'')}`);
-                if (canvas) {
-                    new Chart(canvas, {
-                        type: 'bar', 
-                        data: { 
-                            labels: names, 
-                            datasets: [{ 
-                                label: 'Total Score', 
-                                data: totals, 
-                                backgroundColor: '#0055aa', 
-                                borderColor: '#003366', 
-                                borderWidth: 1 
-                            }] 
-                        },
-                        options: { 
-                            responsive: true, 
-                            plugins: { legend: { display: false } }, 
-                            scales: { y: { beginAtZero: true, max: subjects.length * 100 } } 
-                        }
-                    });
-                }
-            });
-        }, 300);
+
     } catch (e) {
-        perfPage.innerHTML = `<div style="max-width:1000px;margin:20px auto;padding:20px;"><p style="color:red;">Error: ${e.message}</p></div>`;
+        perfPage.innerHTML = `<div style="max-width:1000px;margin:20px auto;padding:20px;"><p style="color:red;">Error loading performance dashboard: ${e.message}</p></div>`;
     }
 };
 
-window.triggerClassExport = function() {
-    const selectedClass = document.getElementById("dashClass")?.value || "ALL";
-    const selectedTerm = document.getElementById("dashTerm")?.value || "Term 3";
-    const selectedYear = document.getElementById("dashYear")?.value || "2026";
+// Helper function to refresh dashboard when filters change
+window.refreshDashboard = function() {
+    const cls = document.getElementById("dashClass")?.value || "ALL";
+    const term = document.getElementById("dashTerm")?.value || "Term 3";
+    const year = document.getElementById("dashYear")?.value || "2026";
+    window.showClassDashboard(term, year, cls);
+};
 
-    if (typeof window.exportAllClassesResults === "function") {
-        window.exportAllClassesResults(selectedTerm, selectedYear, selectedClass);
-    } else {
-        alert("Export function is loading...");
-    }
+// Helper trigger for export button
+window.triggerClassExport = function() {
+    const cls = document.getElementById("dashClass")?.value || "ALL";
+    const term = document.getElementById("dashTerm")?.value || "Term 3";
+    const year = document.getElementById("dashYear")?.value || "2026";
+    window.exportAllClassesResults(term, year, cls);
 };
 
 window.showGradeSummary = async function() {
@@ -1131,12 +1135,6 @@ window.showGradeSummary = async function() {
         html += `</table>`;
         document.getElementById("adminArea").innerHTML = html;
     } catch (e) { document.getElementById("adminArea").innerHTML = `<p style="color:red;">Error: ${e.message}</p>`; }
-};
-
-window.refreshDashboard = function() {
-    const term = document.getElementById("dashTerm").value;
-    const year = document.getElementById("dashYear").value;
-    window.showClassDashboard(term, year);
 };
 
 window.viewStudentHistory = async function(studentName) {
@@ -1202,18 +1200,18 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
         const snapshot = await getDocs(collection(db, "results"));
         const studentsSnapshot = await getDocs(collection(db, "students"));
         
-        // Map student genders from student database
+        // Map genders
         let studentGenderMap = {};
         studentsSnapshot.forEach(docSnap => {
             const data = docSnap.data();
             if (data.name) studentGenderMap[data.name.trim().toLowerCase()] = data.gender || "Unknown";
         });
 
-        // Group results by class
+        // Group by class
         let classGrouped = {};
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
-            const matchesTermYear = (data.term === selectedTerm && data.year == selectedYear);
+            const matchesTermYear = (data.term === selectedTerm && String(data.year) === String(selectedYear));
             const matchesClass = (selectedClass === "ALL" || data.class === selectedClass);
 
             if (matchesTermYear && matchesClass) {
@@ -1222,14 +1220,18 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
 
                 const studentName = docSnap.id.split('_')[0].trim();
                 const gender = studentGenderMap[studentName.toLowerCase()] || data.gender || "Unknown";
+                const scores = data.scores || {};
+                
+                // Calculate max marks based strictly on subjects actually sat
+                const subjectsSatCount = Object.keys(scores).length || 6;
+                const maxPossible = subjectsSatCount * 100;
                 const totalScore = data.total || 0;
-                const maxPossible = (subjects.length || 6) * 100;
-                const passStatus = (totalScore / maxPossible) >= 0.4 ? "PASS" : "FAIL";
+                const passStatus = (totalScore / maxPossible) >= 0.4 ? "PASSED" : "FAILED";
 
                 classGrouped[className].push({
                     name: studentName,
                     gender: gender,
-                    scores: data.scores || {},
+                    scores: scores,
                     totalScore: totalScore,
                     maxPossible: maxPossible,
                     status: passStatus
@@ -1242,26 +1244,63 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             return;
         }
 
-        const workbook = XLSX.utils.book_new();
+        // Build HTML Spreadsheet document for rich styling in Excel
+        let excelHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body { font-family: Calibri, Arial, sans-serif; }
+                .title-header { background-color: #002244; color: #ffffff; font-size: 16pt; font-weight: bold; text-align: center; }
+                .sub-header { background-color: #e6f0ff; color: #003366; font-size: 11pt; font-weight: bold; text-align: center; }
+                .table-head { background-color: #003366 !important; color: #ffffff !important; font-weight: bold; text-align: center; border: 1px solid #002244; }
+                .data-row { border: 1px solid #dddddd; }
+                .summary-header { background-color: #003366; color: #ffffff; font-weight: bold; text-align: center; }
+                .summary-sub { background-color: #d9e1f2; font-weight: bold; text-align: center; }
+                .pass-text { color: #155724; font-weight: bold; }
+                .fail-text { color: #721c24; font-weight: bold; }
+            </style>
+        </head>
+        <body>`;
 
-        // Process each class into its own sheet
         Object.keys(classGrouped).sort().forEach(className => {
             const list = classGrouped[className];
-            // Sort students by total score descending
             list.sort((a, b) => b.totalScore - a.totalScore);
 
-            let sheetRows = [];
+            // Determine unique subjects sat across this class
+            let classSubjectsSet = new Set();
+            list.forEach(s => Object.keys(s.scores).forEach(sub => classSubjectsSet.add(sub)));
+            const classSubjects = Array.from(classSubjectsSet);
 
-            // 1. Title & Header
-            sheetRows.push([`BANDAWE MODEL PRIMARY SCHOOL - ${className.toUpperCase()} RESULTS`]);
-            sheetRows.push([`Term: ${selectedTerm} | Year: ${selectedYear}`]);
-            sheetRows.push([]); // Blank row
+            excelHtml += `
+            <table border="1" style="border-collapse: collapse; width: 100%; margin-bottom: 30px;">
+                <tr>
+                    <td colspan="${classSubjects.length + 5}" class="title-header" style="padding:10px;">
+                        BANDAWE DEAF PRIMARY SCHOOL - ${className.toUpperCase()} EXAMINATION RESULTS
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="${classSubjects.length + 5}" class="sub-header" style="padding:6px;">
+                        Term: ${selectedTerm} | Academic Year: ${selectedYear}
+                    </td>
+                </tr>
+                <tr style="height: 10px;"><td colspan="${classSubjects.length + 5}"></td></tr>
 
-            // 2. Table Headers
-            const subjectHeaders = subjects.map(s => s.toUpperCase());
-            sheetRows.push(["POS", "STUDENT NAME", "GENDER", ...subjectHeaders, "TOTAL MARKS", "STATUS"]);
+                <!-- SCORES TABLE HEADERS (BLUE SHADER) -->
+                <tr>
+                    <th class="table-head">POS</th>
+                    <th class="table-head" style="text-align:left;">STUDENT NAME</th>
+                    <th class="table-head">GENDER</th>`;
+            
+            classSubjects.forEach(sub => {
+                excelHtml += `<th class="table-head">${sub.toUpperCase()}</th>`;
+            });
 
-            // 3. Populate Student Data Rows & Count Gender Stats
+            excelHtml += `
+                    <th class="table-head">TOTAL MARKS</th>
+                    <th class="table-head">STATUS</th>
+                </tr>`;
+
             let boysSat = 0, girlsSat = 0;
             let boysPassed = 0, girlsPassed = 0;
             let boysFailed = 0, girlsFailed = 0;
@@ -1270,29 +1309,33 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 const g = student.gender.toLowerCase();
                 if (g === "male") {
                     boysSat++;
-                    if (student.status === "PASS") boysPassed++;
+                    if (student.status === "PASSED") boysPassed++;
                     else boysFailed++;
                 } else if (g === "female") {
                     girlsSat++;
-                    if (student.status === "PASS") girlsPassed++;
+                    if (student.status === "PASSED") girlsPassed++;
                     else girlsFailed++;
                 }
 
-                const subScores = subjects.map(sub => student.scores[sub] !== undefined ? student.scores[sub] : "-");
-                sheetRows.push([
-                    idx + 1,
-                    student.name,
-                    student.gender,
-                    ...subScores,
-                    `${student.totalScore} / ${student.maxPossible}`,
-                    student.status
-                ]);
+                excelHtml += `
+                <tr class="data-row">
+                    <td style="text-align:center; font-weight:bold;">${idx + 1}</td>
+                    <td style="text-align:left; font-weight:bold;">${student.name}</td>
+                    <td style="text-align:center;">${student.gender}</td>`;
+
+                classSubjects.forEach(sub => {
+                    const mark = student.scores[sub] !== undefined ? student.scores[sub] : "-";
+                    excelHtml += `<td style="text-align:center;">${mark}</td>`;
+                });
+
+                const statusClass = student.status === "PASSED" ? "pass-text" : "fail-text";
+                excelHtml += `
+                    <td style="text-align:center; font-weight:bold; background-color:#f0f4f8;">${student.totalScore} / ${student.maxPossible}</td>
+                    <td style="text-align:center;" class="${statusClass}">${student.status}</td>
+                </tr>`;
             });
 
-            // 4. Gender Performance Summary Section
-            sheetRows.push([]); // Spacing
-            sheetRows.push(["--- CLASS PERFORMANCE SUMMARY BY GENDER ---"]);
-            
+            // GENDER SUMMARY ANALYSIS TABLE
             const totalSat = boysSat + girlsSat;
             const totalPassed = boysPassed + girlsPassed;
             const totalFailed = boysFailed + girlsFailed;
@@ -1301,64 +1344,67 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             const girlsPassRate = girlsSat > 0 ? ((girlsPassed / girlsSat) * 100).toFixed(1) + "%" : "0%";
             const overallPassRate = totalSat > 0 ? ((totalPassed / totalSat) * 100).toFixed(1) + "%" : "0%";
 
-            sheetRows.push(["CATEGORY", "BOYS", "GIRLS", "TOTAL"]);
-            sheetRows.push(["Learners Sat", boysSat, girlsSat, totalSat]);
-            sheetRows.push(["Learners Passed", boysPassed, girlsPassed, totalPassed]);
-            sheetRows.push(["Learners Failed", boysFailed, girlsFailed, totalFailed]);
-            sheetRows.push(["Pass Rate (%)", boysPassRate, girlsPassRate, overallPassRate]);
-
-            // Convert array of arrays to sheet
-            const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
-
-            // 5. Column Width Formatting
-            const colWidths = [
-                { wch: 6 },   // POS
-                { wch: 22 },  // NAME
-                { wch: 10 },  // GENDER
-                ...subjects.map(() => ({ wch: 8 })), // SUBJECTS
-                { wch: 16 },  // TOTAL MARKS
-                { wch: 10 }   // STATUS
-            ];
-            worksheet['!cols'] = colWidths;
-
-            // 6. Add Embedded Performance Chart (Chart.js / SheetJS Drawing Spec)
-            // Summary table row offsets for chart reference
-            const summaryStartRow = sheetRows.length - 4; // Learners Sat row index
-            
-            worksheet['!charts'] = [{
-                type: 'bar',
-                title: `${className} Gender Performance Breakdown`,
-                position: {
-                    from: { col: 1, row: sheetRows.length + 2 },
-                    to: { col: 6, row: sheetRows.length + 18 }
-                },
-                data: {
-                    categories: { col: 0, startRow: summaryStartRow, endRow: summaryStartRow + 2 }, // Sat, Passed, Failed
-                    series: [
-                        { name: "Boys", col: 1, startRow: summaryStartRow, endRow: summaryStartRow + 2 },
-                        { name: "Girls", col: 2, startRow: summaryStartRow, endRow: summaryStartRow + 2 }
-                    ]
-                }
-            }];
-
-            const sheetName = className.replace(/[^a-zA-Z0-9]/g, '_');
-            XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+            excelHtml += `
+                <tr style="height: 15px;"><td colspan="${classSubjects.length + 5}"></td></tr>
+                <tr>
+                    <td colspan="${classSubjects.length + 5}" class="summary-header" style="padding:6px;">
+                        CLASS PERFORMANCE ANALYSIS BY GENDER
+                    </td>
+                </tr>
+                <tr>
+                    <th colspan="2" class="summary-sub">CATEGORY</th>
+                    <th class="summary-sub">BOYS</th>
+                    <th class="summary-sub">GIRLS</th>
+                    <th class="summary-sub" colspan="2">TOTAL</th>
+                </tr>
+                <tr>
+                    <td colspan="2" style="font-weight:bold; padding:4px;">Learners Sat</td>
+                    <td style="text-align:center;">${boysSat}</td>
+                    <td style="text-align:center;">${girlsSat}</td>
+                    <td style="text-align:center; font-weight:bold;" colspan="2">${totalSat}</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="font-weight:bold; padding:4px; color:green;">Learners Passed</td>
+                    <td style="text-align:center; color:green;">${boysPassed}</td>
+                    <td style="text-align:center; color:green;">${girlsPassed}</td>
+                    <td style="text-align:center; font-weight:bold; color:green;" colspan="2">${totalPassed}</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="font-weight:bold; padding:4px; color:red;">Learners Failed</td>
+                    <td style="text-align:center; color:red;">${boysFailed}</td>
+                    <td style="text-align:center; color:red;">${girlsFailed}</td>
+                    <td style="text-align:center; font-weight:bold; color:red;" colspan="2">${totalFailed}</td>
+                </tr>
+                <tr style="background-color:#e6f0ff;">
+                    <td colspan="2" style="font-weight:bold; padding:6px; color:#003366;">Pass Rate (%)</td>
+                    <td style="text-align:center; font-weight:bold; color:#003366;">${boysPassRate}</td>
+                    <td style="text-align:center; font-weight:bold; color:#003366;">${girlsPassRate}</td>
+                    <td style="text-align:center; font-weight:bold; color:#003366;" colspan="2">${overallPassRate}</td>
+                </tr>
+            </table>
+            <br/><br/>`;
         });
 
-        // Save File
+        excelHtml += `</body></html>`;
+
+        // Download as styled Excel file (.xls)
+        const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const link = document.createElement('a');
         const fileName = selectedClass === "ALL" 
-            ? `Bandawe_All_Classes_${selectedTerm}_${selectedYear}.xlsx` 
-            : `Bandawe_${selectedClass.replace(/\s+/g,'_')}_${selectedTerm}_${selectedYear}.xlsx`;
-            
-        XLSX.writeFile(workbook, fileName);
-        alert("Excel export with summary & chart generated successfully!");
+            ? `Bandawe_Deaf_All_Classes_${selectedTerm}_${selectedYear}.xls` 
+            : `Bandawe_Deaf_${selectedClass.replace(/\s+/g,'_')}_${selectedTerm}_${selectedYear}.xls`;
+
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
     } catch (error) {
         console.error("Export Error:", error);
         alert("Export failed: " + error.message);
     }
 };
-
 window.backToDashboardFromHistory = function() {
     // Remove history page
     const historyPage = document.getElementById("adminHistoryPage");
