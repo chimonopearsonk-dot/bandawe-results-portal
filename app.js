@@ -1086,6 +1086,7 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
         perfPage.innerHTML = `<div style="max-width:1000px;margin:20px auto;padding:20px;"><p style="color:red;">Error: ${e.message}</p></div>`;
     }
 };
+
 window.triggerClassExport = function() {
     const selectedClass = document.getElementById("dashClass")?.value || "ALL";
     const selectedTerm = document.getElementById("dashTerm")?.value || "Term 3";
@@ -1357,7 +1358,6 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
         alert("Export failed: " + error.message);
     }
 };
-
 
 window.backToDashboardFromHistory = function() {
     // Remove history page
