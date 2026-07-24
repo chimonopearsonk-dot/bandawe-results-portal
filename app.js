@@ -1202,14 +1202,12 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
         const snapshot = await getDocs(collection(db, "results"));
         const studentsSnapshot = await getDocs(collection(db, "students"));
         
-        // Map student genders from student database
         let studentGenderMap = {};
         studentsSnapshot.forEach(docSnap => {
             const data = docSnap.data();
             if (data.name) studentGenderMap[data.name.trim().toLowerCase()] = data.gender || "Unknown";
         });
 
-        // Group results by class
         let classGrouped = {};
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
@@ -1244,24 +1242,21 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
 
         const workbook = XLSX.utils.book_new();
 
-        // Process each class into its own sheet
         Object.keys(classGrouped).sort().forEach(className => {
             const list = classGrouped[className];
-            // Sort students by total score descending
             list.sort((a, b) => b.totalScore - a.totalScore);
 
             let sheetRows = [];
 
-            // 1. Title & Header
+            // Title Header
             sheetRows.push([`BANDAWE MODEL PRIMARY SCHOOL - ${className.toUpperCase()} RESULTS`]);
             sheetRows.push([`Term: ${selectedTerm} | Year: ${selectedYear}`]);
-            sheetRows.push([]); // Blank row
+            sheetRows.push([]);
 
-            // 2. Table Headers
+            // Headers
             const subjectHeaders = subjects.map(s => s.toUpperCase());
             sheetRows.push(["POS", "STUDENT NAME", "GENDER", ...subjectHeaders, "TOTAL MARKS", "STATUS"]);
 
-            // 3. Populate Student Data Rows & Count Gender Stats
             let boysSat = 0, girlsSat = 0;
             let boysPassed = 0, girlsPassed = 0;
             let boysFailed = 0, girlsFailed = 0;
@@ -1289,8 +1284,8 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 ]);
             });
 
-            // 4. Gender Performance Summary Section
-            sheetRows.push([]); // Spacing
+            // Gender Performance Summary Table
+            sheetRows.push([]);
             sheetRows.push(["--- CLASS PERFORMANCE SUMMARY BY GENDER ---"]);
             
             const totalSat = boysSat + girlsSat;
@@ -1307,58 +1302,33 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             sheetRows.push(["Learners Failed", boysFailed, girlsFailed, totalFailed]);
             sheetRows.push(["Pass Rate (%)", boysPassRate, girlsPassRate, overallPassRate]);
 
-            // Convert array of arrays to sheet
             const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
 
-            // 5. Column Width Formatting
-            const colWidths = [
-                { wch: 6 },   // POS
-                { wch: 22 },  // NAME
-                { wch: 10 },  // GENDER
-                ...subjects.map(() => ({ wch: 8 })), // SUBJECTS
-                { wch: 16 },  // TOTAL MARKS
-                { wch: 10 }   // STATUS
+            // Column Width Formatting
+            worksheet['!cols'] = [
+                { wch: 6 },
+                { wch: 22 },
+                { wch: 10 },
+                ...subjects.map(() => ({ wch: 8 })),
+                { wch: 16 },
+                { wch: 10 }
             ];
-            worksheet['!cols'] = colWidths;
-
-            // 6. Add Embedded Performance Chart (Chart.js / SheetJS Drawing Spec)
-            // Summary table row offsets for chart reference
-            const summaryStartRow = sheetRows.length - 4; // Learners Sat row index
-            
-            worksheet['!charts'] = [{
-                type: 'bar',
-                title: `${className} Gender Performance Breakdown`,
-                position: {
-                    from: { col: 1, row: sheetRows.length + 2 },
-                    to: { col: 6, row: sheetRows.length + 18 }
-                },
-                data: {
-                    categories: { col: 0, startRow: summaryStartRow, endRow: summaryStartRow + 2 }, // Sat, Passed, Failed
-                    series: [
-                        { name: "Boys", col: 1, startRow: summaryStartRow, endRow: summaryStartRow + 2 },
-                        { name: "Girls", col: 2, startRow: summaryStartRow, endRow: summaryStartRow + 2 }
-                    ]
-                }
-            }];
 
             const sheetName = className.replace(/[^a-zA-Z0-9]/g, '_');
             XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
         });
 
-        // Save File
         const fileName = selectedClass === "ALL" 
             ? `Bandawe_All_Classes_${selectedTerm}_${selectedYear}.xlsx` 
             : `Bandawe_${selectedClass.replace(/\s+/g,'_')}_${selectedTerm}_${selectedYear}.xlsx`;
             
         XLSX.writeFile(workbook, fileName);
-        alert("Excel export with summary & chart generated successfully!");
 
     } catch (error) {
         console.error("Export Error:", error);
         alert("Export failed: " + error.message);
     }
 };
-
 window.backToDashboardFromHistory = function() {
     // Remove history page
     const historyPage = document.getElementById("adminHistoryPage");
