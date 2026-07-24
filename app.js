@@ -994,22 +994,41 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
         let html = `
             <div style="max-width:1000px;margin:20px auto;padding:20px;">
                 <button onclick="backToDashboard()" style="margin-bottom:15px;">← Back to Dashboard</button><h3>Class Performance Dashboard</h3>
-                <div style="margin:15px 0; padding:15px; background:#f8f9ff; border-radius:10px;">
-                    <select id="dashTerm" onchange="refreshDashboard()" style="padding:10px; margin-right:10px;border-radius:6px;border:1px solid #ccc;">
-                        <option value="Term 1" ${selectedTerm === "Term 1" ? "selected" : ""}>Term 1</option>
-                        <option value="Term 2" ${selectedTerm === "Term 2" ? "selected" : ""}>Term 2</option>
-                        <option value="Term 3" ${selectedTerm === "Term 3" ? "selected" : ""}>Term 3</option>
-                    </select>
-                    <select id="dashYear" onchange="refreshDashboard()" style="padding:10px;border-radius:6px;border:1px solid #ccc;">
-                        <option value="2025" ${selectedYear === "2025" ? "selected" : ""}>2025</option>
-                        <option value="2026" ${selectedYear === "2026" ? "selected" : ""}>2026</option>
-                        <option value="2027" ${selectedYear === "2027" ? "selected" : ""}>2027</option>
-                    </select>
-                    <!-- EXPORT BUTTON HERE -->
-                    <button onclick="triggerClassExport()" style="background: #28a745; color: white; padding: 10px 20px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                        📊 Export All Class Results (Excel)
-                    </button>
-                </div>`;
+                <div style="margin:15px 0; padding:15px; background:#f8f9ff; border-radius:10px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <!-- CLASS SELECTOR -->
+        <select id="dashClass" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc; font-weight: bold; color: #003366;">
+            <option value="ALL">All Classes</option>
+            <option value="Standard 1">Standard 1</option>
+            <option value="Standard 2">Standard 2</option>
+            <option value="Standard 3">Standard 3</option>
+            <option value="Standard 4">Standard 4</option>
+            <option value="Standard 5">Standard 5</option>
+            <option value="Standard 6">Standard 6</option>
+            <option value="Standard 7">Standard 7</option>
+            <option value="Standard 8">Standard 8</option>
+        </select>
+
+        <!-- TERM SELECTOR -->
+        <select id="dashTerm" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc;">
+            <option value="Term 1" ${selectedTerm === "Term 1" ? "selected" : ""}>Term 1</option>
+            <option value="Term 2" ${selectedTerm === "Term 2" ? "selected" : ""}>Term 2</option>
+            <option value="Term 3" ${selectedTerm === "Term 3" ? "selected" : ""}>Term 3</option>
+        </select>
+
+        <!-- YEAR SELECTOR -->
+        <select id="dashYear" onchange="refreshDashboard()" style="padding:10px; border-radius:6px; border:1px solid #ccc;">
+            <option value="2025" ${selectedYear === "2025" ? "selected" : ""}>2025</option>
+            <option value="2026" ${selectedYear === "2026" ? "selected" : ""}>2026</option>
+            <option value="2027" ${selectedYear === "2027" ? "selected" : ""}>2027</option>
+        </select>
+    </div>
+
+    <!-- DYNAMIC EXPORT BUTTON -->
+    <button onclick="triggerClassExport()" style="background: #28a745; color: white; padding: 10px 20px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+        <i class="fa-solid fa-file-excel"></i> Export Selected Results (Excel)
+    </button>
+</div>`;
         
         Object.keys(classData).sort().forEach(cls => {
             const students = classData[cls];
@@ -1068,12 +1087,15 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
     }
 };
 window.triggerClassExport = function() {
-    const term = document.getElementById("dashTerm")?.value || "Term 3";
-    const year = document.getElementById("dashYear")?.value || "2026";
+    const selectedClass = document.getElementById("dashClass")?.value || "ALL";
+    const selectedTerm = document.getElementById("dashTerm")?.value || "Term 3";
+    const selectedYear = document.getElementById("dashYear")?.value || "2026";
+
     if (typeof window.exportAllClassesResults === "function") {
-        window.exportAllClassesResults(term, year);
+        // Pass class filter to export function
+        window.exportAllClassesResults(selectedTerm, selectedYear, selectedClass);
     } else {
-        alert("Export feature is not initialized.");
+        alert("Export function loading...");
     }
 };
 
