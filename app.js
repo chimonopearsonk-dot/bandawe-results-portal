@@ -984,7 +984,8 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
                     if (!classData[clsName]) classData[clsName] = [];
                     
                     const scores = d.scores || {};
-                    const subjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length; 
+                    // Count only subjects actually sat with score > 0
+                    const satSubjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length;
                     const maxMarks = (satSubjectsCount || 1) * 100;
 
                     classData[clsName].push({ 
@@ -1102,7 +1103,6 @@ window.triggerClassExport = function() {
     const year = document.getElementById("dashYear")?.value || "2026";
     window.exportAllClassesResults(term, year, cls);
 };
-
 window.showGradeSummary = async function() {
     window.openAdminPage();
     document.getElementById("adminArea").innerHTML = `<p>Loading Grade Summary...</p>`;
@@ -1222,7 +1222,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 const gender = studentGenderMap[studentName.toLowerCase()] || data.gender || "Unknown";
                 const scores = data.scores || {};
                 
-                // Calculate max marks based strictly on subjects actually sat
+                // Count strictly subjects actually sat (score > 0)
                 const satSubjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length;
                 const maxPossible = (satSubjectsCount || 1) * 100;
                 const totalScore = data.total || 0;
@@ -1244,7 +1244,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             return;
         }
 
-        // Build HTML Spreadsheet document for rich styling in Excel
+        // Build HTML Spreadsheet document for styled Excel export
         let excelHtml = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head>
@@ -1267,9 +1267,15 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             const list = classGrouped[className];
             list.sort((a, b) => b.totalScore - a.totalScore);
 
-            // Determine unique subjects sat across this class
+            // Collect unique subjects actually sat with score > 0 across this class
             let classSubjectsSet = new Set();
-            list.forEach(s => Object.keys(s.scores).forEach(sub => classSubjectsSet.add(sub)));
+            list.forEach(s => {
+                Object.keys(s.scores).forEach(sub => {
+                    if (Number(s.scores[sub]) > 0) {
+                        classSubjectsSet.add(sub);
+                    }
+                });
+            });
             const classSubjects = Array.from(classSubjectsSet);
 
             excelHtml += `
@@ -1324,7 +1330,8 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                     <td style="text-align:center;">${student.gender}</td>`;
 
                 classSubjects.forEach(sub => {
-                    const mark = student.scores[sub] !== undefined ? student.scores[sub] : "-";
+                    const val = Number(student.scores[sub]);
+                    const mark = (student.scores[sub] !== undefined && val > 0) ? val : "-";
                     excelHtml += `<td style="text-align:center;">${mark}</td>`;
                 });
 
@@ -1405,6 +1412,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
         alert("Export failed: " + error.message);
     }
 };
+
 window.backToDashboardFromHistory = function() {
     // Remove history page
     const historyPage = document.getElementById("adminHistoryPage");
