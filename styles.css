@@ -841,31 +841,4 @@
                 font-size: 13px !important;
             }
         }
-            /* Custom Blue Shader for Table Headers */
-table th, #reportCard table th, .summary-table th {
-    background: linear-gradient(135deg, #003366, #0055aa) !important;
-    color: #ffffff !important;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 10px 8px !important;
-    border: 1px solid #002244 !important;
-}
-
-/* Striped Alternating Rows for Easy Reading */
-table tbody tr:nth-child(even) {
-    background-color: #f4f8ff;
-}
-
-table tbody tr:hover {
-    background-color: #e6f0ff;
-}
-
-/* Styled Performance & Grade Summary Cards */
-.summary-box {
-    background: linear-gradient(135deg, #eef4ff, #ffffff) !important;
-    border-left: 4px solid #003366 !important;
-    box-shadow: 0 2px 8px rgba(0, 51, 102, 0.08);
-    border-radius: 8px;
-    padding: 10px;
-}
+           
