@@ -1195,19 +1195,26 @@ window.viewStudentHistory = async function(studentName) {
         historyPage.innerHTML = `<div style="max-width:900px;margin:20px auto;padding:20px;"><p style="color:red;">Error: ${e.message}</p><button onclick="backToDashboardFromHistory()" style="margin-top:15px;padding:10px 20px;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">Back</button></div>`;
     }
 };
+
 window.exportAllClassesResults = async function(selectedTerm = "Term 3", selectedYear = "2026", selectedClass = "ALL") {
     try {
         const snapshot = await getDocs(collection(db, "results"));
         const studentsSnapshot = await getDocs(collection(db, "students"));
         
-        // Map genders
+        // 1. Multi-Field Student Gender Lookup Map
         let studentGenderMap = {};
         studentsSnapshot.forEach(docSnap => {
             const data = docSnap.data();
-            if (data.name) studentGenderMap[data.name.trim().toLowerCase()] = data.gender || "Unknown";
+            const g = data.gender || data.sex || data.Gender || data.Sex || "";
+            
+            // Map across all possible name identifiers
+            if (docSnap.id) studentGenderMap[docSnap.id.trim().toLowerCase()] = g;
+            if (data.name) studentGenderMap[data.name.trim().toLowerCase()] = g;
+            if (data.studentName) studentGenderMap[data.studentName.trim().toLowerCase()] = g;
+            if (data.fullName) studentGenderMap[data.fullName.trim().toLowerCase()] = g;
         });
 
-        // Group by class
+        // 2. Group Results by Class
         let classGrouped = {};
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
@@ -1218,11 +1225,27 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 const className = data.class || "Unknown Class";
                 if (!classGrouped[className]) classGrouped[className] = [];
 
-                const studentName = docSnap.id.split('_')[0].trim();
-                const gender = studentGenderMap[studentName.toLowerCase()] || data.gender || "Unknown";
+                // Extract student name
+                const studentName = (data.studentName || data.name || docSnap.id.split('_')[0]).trim();
+                const nameKey = studentName.toLowerCase();
+                
+                // Lookup gender from map OR direct result record fallback
+                let rawGender = studentGenderMap[nameKey] || data.gender || data.sex || data.Gender || data.Sex || "Unknown";
+                
+                // Normalize gender format (handles 'M', 'F', 'Male', 'Female', 'Boy', 'Girl')
+                let normalizedGender = "Unknown";
+                const gLow = rawGender.toString().trim().toLowerCase();
+                if (gLow === "m" || gLow === "male" || gLow === "boy" || gLow === "boys") {
+                    normalizedGender = "Male";
+                } else if (gLow === "f" || gLow === "female" || gLow === "girl" || gLow === "girls") {
+                    normalizedGender = "Female";
+                } else if (rawGender && rawGender !== "Unknown") {
+                    normalizedGender = rawGender;
+                }
+
                 const scores = data.scores || {};
                 
-                // Count strictly subjects actually sat (score > 0)
+                // Count strictly subjects actually sat with score > 0
                 const satSubjectsCount = Object.keys(scores).filter(sub => Number(scores[sub]) > 0).length;
                 const maxPossible = (satSubjectsCount || 1) * 100;
                 const totalScore = data.total || 0;
@@ -1230,7 +1253,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
 
                 classGrouped[className].push({
                     name: studentName,
-                    gender: gender,
+                    gender: normalizedGender,
                     scores: scores,
                     totalScore: totalScore,
                     maxPossible: maxPossible,
@@ -1244,7 +1267,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             return;
         }
 
-        // Build HTML Spreadsheet document for styled Excel export
+        // 3. Build HTML Spreadsheet (Exact Styling Preserved)
         let excelHtml = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head>
@@ -1267,7 +1290,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
             const list = classGrouped[className];
             list.sort((a, b) => b.totalScore - a.totalScore);
 
-            // Collect unique subjects actually sat with score > 0 across this class
+            // Collect unique subjects sat across this class (score > 0)
             let classSubjectsSet = new Set();
             list.forEach(s => {
                 Object.keys(s.scores).forEach(sub => {
@@ -1292,7 +1315,7 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
                 </tr>
                 <tr style="height: 10px;"><td colspan="${classSubjects.length + 5}"></td></tr>
 
-                <!-- SCORES TABLE HEADERS (BLUE SHADER) -->
+                <!-- SCORES TABLE HEADERS -->
                 <tr>
                     <th class="table-head">POS</th>
                     <th class="table-head" style="text-align:left;">STUDENT NAME</th>
@@ -1313,11 +1336,11 @@ window.exportAllClassesResults = async function(selectedTerm = "Term 3", selecte
 
             list.forEach((student, idx) => {
                 const g = student.gender.toLowerCase();
-                if (g === "male") {
+                if (g === "male" || g === "m" || g === "boy") {
                     boysSat++;
                     if (student.status === "PASSED") boysPassed++;
                     else boysFailed++;
-                } else if (g === "female") {
+                } else if (g === "female" || g === "f" || g === "girl") {
                     girlsSat++;
                     if (student.status === "PASSED") girlsPassed++;
                     else girlsFailed++;
