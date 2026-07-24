@@ -1005,6 +1005,10 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
                         <option value="2026" ${selectedYear === "2026" ? "selected" : ""}>2026</option>
                         <option value="2027" ${selectedYear === "2027" ? "selected" : ""}>2027</option>
                     </select>
+                    <!-- EXPORT BUTTON HERE -->
+                    <button onclick="triggerClassExport()" style="background: #28a745; color: white; padding: 10px 20px; font-size: 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        📊 Export All Class Results (Excel)
+                    </button>
                 </div>`;
         
         Object.keys(classData).sort().forEach(cls => {
@@ -1062,7 +1066,15 @@ window.showClassDashboard = async function(selectedTerm = "Term 3", selectedYear
     } catch (e) {
         perfPage.innerHTML = `<div style="max-width:1000px;margin:20px auto;padding:20px;"><p style="color:red;">Error: ${e.message}</p></div>`;
     }
-    document.getElementById("adminPerformanceContent").innerHTML = html;
+};
+window.triggerClassExport = function() {
+    const term = document.getElementById("dashTerm")?.value || "Term 3";
+    const year = document.getElementById("dashYear")?.value || "2026";
+    if (typeof window.exportAllClassesResults === "function") {
+        window.exportAllClassesResults(term, year);
+    } else {
+        alert("Export feature is not initialized.");
+    }
 };
 
 window.showGradeSummary = async function() {
